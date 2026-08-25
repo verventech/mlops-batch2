@@ -25,8 +25,8 @@ fruits = ["apple", "banana", "avocado", "cherry", "watermelon"]
 
 #For loop
 
-for list_item in fruits:
-  print(list_item)
+for fruit in fruits:
+  print(fruit)
 
 print (f" The second item in fruits list is {fruits[1]}")  
 
