@@ -3,7 +3,7 @@
 # Step1: export SSH_PASSWORD
 # STep 2: execute script with all cmd-line args
 # check-uptime-basic.py 192.168.1.13 musharaf_manzoor
-# Task: check-uptime-basic.py usr_name 192.168.1.13 192.168.1.12 192.168.1.22
+# Task: check-uptime-basic.py usr_name 192.168.1.13  192.168.1.22 192.168.1.12
 # v_auto/ verventech@123 -> make it passwordless sudo
 import sys
 import os
@@ -24,7 +24,7 @@ if not password:
 
 # Initialize and connect SSH client
 client = paramiko.SSHClient()
-client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+client.set_missing_host_key_policy(paramiko.AutoAddPolicy()) #Auto add cert as "yes"
 
 try:
     client.connect(hostname, username=username, password=password)
