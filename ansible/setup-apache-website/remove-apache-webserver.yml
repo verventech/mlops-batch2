@@ -1,0 +1,16 @@
+---
+- name: uninstall and remove apache2
+  hosts: localhost
+  become: yes
+
+  tasks:
+    - name: Stop and disable apache
+      service:
+        name: apache2
+        state: stopped
+
+    - name: ensure apache is absent
+      apt:
+        name: apache2
+        state: absent
+        purge: yes # Removes its config files too
