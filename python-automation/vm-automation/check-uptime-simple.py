@@ -9,6 +9,7 @@ import sys
 import os
 import paramiko
 
+commands = ['ls /tmp', 'uptime', 'ip a']
 # Ensure correct number of arguments are passed
 if len(sys.argv) < 3:
     print("Usage: python check_uptime.py <hostname> <username>")
@@ -27,18 +28,19 @@ client = paramiko.SSHClient()
 client.set_missing_host_key_policy(paramiko.AutoAddPolicy()) #Auto add cert as "yes"
 
 try:
-    client.connect(hostname, username=username, password=password)
+    client.connect(hostname, username=username, password=password, timeout=5)
+    for cmd in commands:
+
+        # Run the commandpw
+        stdin, stdout, stderr = client.exec_command(cmd)
     
-    # Run the commandpw
-    stdin, stdout, stderr = client.exec_command('uptime')
+        output = stdout.read().decode('utf-8').strip()
+        error = stderr.read().decode('utf-8').strip()
     
-    output = stdout.read().decode('utf-8').strip()
-    error = stderr.read().decode('utf-8').strip()
-    
-    if output:
-        print(f"[{hostname}] {output}")
-    if error:
-        print(f"[{hostname}] Error: {error}", file=sys.stderr)
+        if output:
+             print(f"[{hostname}] {output}")
+        if error:
+            print(f"[{hostname}] Error: {error}", file=sys.stderr)
 
 except Exception as e:
     print(f"Connection failed: {e}", file=sys.stderr)
