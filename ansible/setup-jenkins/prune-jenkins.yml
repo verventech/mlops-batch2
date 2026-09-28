@@ -1,0 +1,37 @@
+[200~---
+- name: Prune and Reset Jenkins VM Environment
+    hosts: jenkins
+        become: true
+            tasks:
+                  - name: Stop Jenkins service
+                          ansible.builtin.systemd:
+                                    name: jenkins
+                                              state: stopped
+                                                      ignore_errors: true
+
+                                                            - name: Remove Jenkins home directory contents (jobs, plugins, workspaces, configs)
+                                                                    ansible.builtin.file:
+                                                                              path: /var/lib/jenkins
+                                                                                        state: absent
+
+                                                                                              - name: Recreate clean Jenkins home directory
+                                                                                                      ansible.builtin.file:
+                                                                                                                path: /var/lib/jenkins
+                                                                                                                          state: directory
+                                                                                                                                    owner: jenkins
+                                                                                                                                              group: jenkins
+                                                                                                                                                        mode: '0755'
+
+                                                                                                                                                              - name: Prune all Docker containers, images, and volumes left from old builds
+                                                                                                                                                                      ansible.builtin.command: docker system prune -a --volumes -f
+                                                                                                                                                                              ignore_errors: true
+
+                                                                                                                                                                                    - name: Remove legacy SSH keys for verjenkins on Jenkins host if any
+                                                                                                                                                                                            ansible.builtin.file:
+                                                                                                                                                                                                      path: "/var/lib/jenkins/.ssh"
+                                                                                                                                                                                                                state: absent
+
+                                                                                                                                                                                                                      - name: Restart Jenkins service with fresh configuration
+                                                                                                                                                                                                                              ansible.builtin.systemd:
+                                                                                                                                                                                                                                        name: jenkins
+                                                                                                                                                                                                                                                  state: restarted
