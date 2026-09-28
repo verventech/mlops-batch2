@@ -1,6 +1,6 @@
 ---
 - name: Provision Production Environment
-  hosts: prod-vm
+  hosts: production-env
   become: true
 
   vars_prompt:
