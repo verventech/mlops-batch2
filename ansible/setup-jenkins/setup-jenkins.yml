@@ -1,0 +1,97 @@
+---
+- name: Provision Jenkins VM Engine & Dependencies
+  hosts: jenkins
+  become: true
+  tasks:
+    - name: Update apt cache and install system prerequisites
+      ansible.builtin.apt:
+        name:
+          - curl
+          - gnupg
+          - ca-certificates
+          - lsb-release
+          - git
+          - openssh-client
+        state: present
+        update_cache: true
+
+    - name: Add Docker GPG key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Install Docker Engine and Docker Compose plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+
+    - name: Ensure Docker service is running and enabled
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add Jenkins repository GPG key
+      ansible.builtin.apt_key:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+        state: present
+
+    - name: Add Jenkins repository
+      ansible.builtin.apt_repository:
+        repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+        state: present
+
+    - name: Install OpenJDK 17 and Jenkins
+      ansible.builtin.apt:
+        name:
+          - openjdk-17-jdk
+          - jenkins
+        state: present
+        update_cache: true
+
+    - name: Add 'jenkins' user to 'docker' group
+      ansible.builtin.user:
+        name: jenkins
+        groups: docker
+        append: true
+
+    - name: Ensure SSH directory exists for jenkins user
+      ansible.builtin.file:
+        path: /var/lib/jenkins/.ssh
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: '0700'
+
+    - name: Generate SSH Keypair for Jenkins (used for SSH deployment to targets)
+      community.crypto.openssh_keypair:
+        path: /var/lib/jenkins/.ssh/id_rsa
+        type: rsa
+        size: 4096
+        owner: jenkins
+        group: jenkins
+
+    - name: Disable StrictHostKeyChecking for Jenkins user SSH config
+      ansible.builtin.copy:
+        dest: /var/lib/jenkins/.ssh/config
+        content: |
+          Host *
+            StrictHostKeyChecking no
+            UserKnownHostsFile=/dev/null
+        owner: jenkins
+        group: jenkins
+        mode: '0600'
+
+    - name: Restart Jenkins to apply group membership & configurations
+      ansible.builtin.systemd:
+        name: jenkins
+        state: restarted
