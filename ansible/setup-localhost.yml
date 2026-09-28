@@ -1,0 +1,32 @@
+---
+- name: Prepare Ansible Control Machine (Localhost)
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    - name: Update APT cache and install Python prerequisites
+      ansible.builtin.apt:
+        name:
+          - python3-pip
+          - python3-passlib
+          - python3-paramiko
+          - git
+          - curl
+        state: present
+        update_cache: true
+
+    - name: Ensure passlib is available in Python environment via pip
+      ansible.builtin.pip:
+        name: passlib
+        state: present
+      ignore_errors: true
+
+    - name: Verify passlib installation
+      ansible.builtin.command: python3 -c "import passlib; print('Passlib is working!')"
+      register: passlib_check
+      changed_when: false
+
+    - name: Display verification status
+      ansible.builtin.debug:
+        msg: "{{ passlib_check.stdout }}"
