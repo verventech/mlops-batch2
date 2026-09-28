@@ -1,9 +1,25 @@
 ---
-- name: Provision Jenkins VM Engine & Dependencies
+- name: Provision Standalone Jenkins VM
   hosts: jenkins
   become: true
+
   tasks:
-    - name: Update apt cache and install system prerequisites
+    - name: Clean up conflicting legacy Docker APT source entries
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/docker.list
+        - /etc/apt/sources.list.d/archive_uri-https_download_docker_com_linux_ubuntu-noble.list
+        - /etc/apt/sources.list.d/archive_uri-https_download_docker_com_linux_ubuntu-jammy.list
+
+    - name: Ensure keyrings directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Install prerequisite packages
       ansible.builtin.apt:
         name:
           - curl
@@ -15,15 +31,19 @@
         state: present
         update_cache: true
 
-    - name: Add Docker GPG key
-      ansible.builtin.apt_key:
+    # --- DOCKER SETUP (Modern keyrings method) ---
+    - name: Download Docker GPG key
+      ansible.builtin.get_url:
         url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
 
-    - name: Add Docker repository
+    - name: Add Docker APT repository
       ansible.builtin.apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        filename: docker
         state: present
+        update_cache: true
 
     - name: Install Docker Engine and Docker Compose plugin
       ansible.builtin.apt:
@@ -40,15 +60,19 @@
         state: started
         enabled: true
 
-    - name: Add Jenkins repository GPG key
-      ansible.builtin.apt_key:
+    # --- JENKINS SETUP (Modern keyrings method) ---
+    - name: Download Jenkins GPG key
+      ansible.builtin.get_url:
         url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
-        state: present
+        dest: /etc/apt/keyrings/jenkins.asc
+        mode: '0644'
 
-    - name: Add Jenkins repository
+    - name: Add Jenkins APT repository
       ansible.builtin.apt_repository:
-        repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+        repo: "deb [signed-by=/etc/apt/keyrings/jenkins.asc] https://pkg.jenkins.io/debian-stable binary/"
+        filename: jenkins
         state: present
+        update_cache: true
 
     - name: Install OpenJDK 17 and Jenkins
       ansible.builtin.apt:
@@ -56,7 +80,6 @@
           - openjdk-17-jdk
           - jenkins
         state: present
-        update_cache: true
 
     - name: Add 'jenkins' user to 'docker' group
       ansible.builtin.user:
@@ -72,7 +95,7 @@
         group: jenkins
         mode: '0700'
 
-    - name: Generate SSH Keypair for Jenkins (used for SSH deployment to targets)
+    - name: Generate SSH Keypair for Jenkins
       community.crypto.openssh_keypair:
         path: /var/lib/jenkins/.ssh/id_rsa
         type: rsa
@@ -80,7 +103,7 @@
         owner: jenkins
         group: jenkins
 
-    - name: Disable StrictHostKeyChecking for Jenkins user SSH config
+    - name: Disable StrictHostKeyChecking for Jenkins user SSH
       ansible.builtin.copy:
         dest: /var/lib/jenkins/.ssh/config
         content: |
@@ -91,7 +114,17 @@
         group: jenkins
         mode: '0600'
 
-    - name: Restart Jenkins to apply group membership & configurations
+    - name: Restart Jenkins service
       ansible.builtin.systemd:
         name: jenkins
         state: restarted
+
+    # --- DISPLAY INITIAL ADMIN PASSWORD ---
+    - name: Read Jenkins Initial Admin Password
+      ansible.builtin.slurp:
+        src: /var/lib/jenkins/secrets/initialAdminPassword
+      register: jenkins_password_encoded
+
+    - name: Print Initial Admin Password
+      ansible.builtin.debug:
+        msg: "Jenkins Setup Complete! Initial Admin Password: {{ jenkins_password_encoded.content | b64decode | trim }}"
