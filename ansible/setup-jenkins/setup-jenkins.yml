@@ -4,7 +4,7 @@
   become: true
 
   tasks:
-    # 1. PURGE OLD / CONFLICTING REPOSITORY CONFIGURATIONS & KEYS
+    # 1. PURGE ALL OLD / CONFLICTING SOURCES & KEYRINGS
     - name: Remove existing Docker and Jenkins source lists and keys
       ansible.builtin.file:
         path: "{{ item }}"
@@ -18,6 +18,7 @@
         - /etc/apt/keyrings/docker.asc
         - /etc/apt/keyrings/jenkins.gpg
         - /etc/apt/keyrings/jenkins.asc
+        - /etc/apt/keyrings/jenkins-keyring.asc
 
     - name: Strip any legacy Docker or Jenkins repository lines from /etc/apt/sources.list
       ansible.builtin.lineinfile:
@@ -73,15 +74,17 @@
         state: started
         enabled: true
 
-    # 4. ADD JENKINS REPOSITORY (DE-ARMORED KEY)
-    - name: Download and de-armor Jenkins GPG key
-      ansible.builtin.shell: |
-        curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | gpg --dearmor -o /etc/apt/keyrings/jenkins.gpg
-        chmod 644 /etc/apt/keyrings/jenkins.gpg
+    # 4. ADD JENKINS REPOSITORY (DIRECT ASCII-ARMORED KEY)
+    - name: Fetch Jenkins ASCII-armored GPG Key
+      ansible.builtin.get_url:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+        dest: /etc/apt/keyrings/jenkins-keyring.asc
+        mode: '0644'
+        force: true
 
     - name: Add Jenkins APT repository
       ansible.builtin.apt_repository:
-        repo: "deb [signed-by=/etc/apt/keyrings/jenkins.gpg] https://pkg.jenkins.io/debian-stable binary/"
+        repo: "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
         filename: jenkins
         state: present
         update_cache: true
