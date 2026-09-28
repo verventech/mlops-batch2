@@ -1,15 +1,18 @@
 ---
-- name: Uninstall Jenkins & Deep Clean System Resources
+- name: Complete System Prune & Purge for Jenkins VM
   hosts: jenkins
   become: true
+
   tasks:
+    # 1. STOP SERVICES
     - name: Stop Jenkins service
       ansible.builtin.systemd:
         name: jenkins
         state: stopped
       ignore_errors: true
 
-    - name: Purge Jenkins and OpenJDK packages
+    # 2. PURGE PACKAGES
+    - name: Purge Jenkins and Java packages
       ansible.builtin.apt:
         name:
           - jenkins
@@ -17,16 +20,33 @@
         state: absent
         purge: true
         autoremove: true
+      ignore_errors: true
 
-    - name: Remove Jenkins repository file and GPG keys
+    # 3. WIPE ALL DOCKER & JENKINS APT SOURCES AND KEYRINGS (PREVENTS FUTURE CONFLICTS)
+    - name: Remove all legacy Docker and Jenkins source files and keyrings
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop:
+        - /etc/apt/sources.list.d/docker.list
+        - /etc/apt/sources.list.d/docker.sources
         - /etc/apt/sources.list.d/jenkins.list
+        - /etc/apt/sources.list.d/jenkins.sources
+        - /etc/apt/keyrings/docker.gpg
+        - /etc/apt/keyrings/docker.asc
+        - /etc/apt/keyrings/jenkins.gpg
+        - /etc/apt/keyrings/jenkins.asc
         - /etc/apt/trusted.gpg.d/jenkins.gpg
+        - /etc/apt/trusted.gpg.d/docker.gpg
 
-    - name: Delete Jenkins data, configuration, cache, and log directories
+    - name: Strip any residual Docker or Jenkins lines from /etc/apt/sources.list
+      ansible.builtin.lineinfile:
+        path: /etc/apt/sources.list
+        regexp: '.*(download\.docker\.com|pkg\.jenkins\.io).*'
+        state: absent
+
+    # 4. DELETE DATA DIRECTORIES & USER ACCOUNTS
+    - name: Delete Jenkins data, configuration, workspace, and cache directories
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
@@ -45,15 +65,17 @@
         force: true
       ignore_errors: true
 
-    - name: Purge unused/stopped Docker containers, unused images, networks, and build caches
+    # 5. DOCKER & SYSTEM DISK CLEANUP
+    - name: Deep clean all Docker images, containers, networks, volumes, and build cache
       ansible.builtin.command: docker system prune -a --volumes -f
       ignore_errors: true
 
-    - name: Clean APT package cache to reclaim disk space
-      ansible.builtin.apt:
-        autoclean: true
-        autoremove: true
-      
+    - name: Clean APT cache and package databases
+      ansible.builtin.shell: |
+        apt-get clean
+        rm -rf /var/lib/apt/lists/*
+      ignore_errors: true
+
     - name: Clear system journal logs older than 1 day
       ansible.builtin.command: journalctl --vacuum-time=1d
       ignore_errors: true
