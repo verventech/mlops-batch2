@@ -1,0 +1,52 @@
+---
+- name: Deep Prune and Reset Production Environment
+  hosts: prod-vm
+  become: true
+
+  tasks:
+    # 1. STOP & REMOVE ALL DOCKER CONTAINERS
+    - name: Stop and remove all running Docker containers
+      ansible.builtin.shell: |
+        docker ps -aq | xargs -r docker rm -f
+      ignore_errors: true
+
+    # 2. PURGE DOCKER SYSTEM RESOURCES
+    - name: Deep clean all unused Docker images, volumes, networks, and build cache
+      ansible.builtin.command: docker system prune -a --volumes -f
+      ignore_errors: true
+
+    # 3. CLEAN DEPLOYMENT WORKSPACE & FILES
+    - name: Remove verjenkins home deployment artifacts (docker-compose files, build contexts)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /home/verjenkins/docker-compose.yml
+        - /home/verjenkins/docker-compose.prod.yml
+        - /home/verjenkins/app
+        - /home/verjenkins/.cache
+
+    # 4. OPTIONAL: WIPE DEPLOYMENT USER & SSH KEYS
+    - name: Remove verjenkins user and home directory
+      ansible.builtin.user:
+        name: verjenkins
+        state: absent
+        remove: true
+        force: true
+      ignore_errors: true
+
+    - name: Remove verjenkins sudoers configuration
+      ansible.builtin.file:
+        path: /etc/sudoers.d/verjenkins
+        state: absent
+
+    # 5. APT & SYSTEM DISK CLEANUP
+    - name: Clean APT package cache and lists
+      ansible.builtin.shell: |
+        apt-get clean
+        rm -rf /var/lib/apt/lists/*
+      ignore_errors: true
+
+    - name: Clear system journal logs older than 1 day
+      ansible.builtin.command: journalctl --vacuum-time=1d
+      ignore_errors: true
