@@ -1,5 +1,5 @@
 ---
-- name: Prune and Reset Jenkins VM Environment
+- name: Uninstall Jenkins & Deep Clean System Resources
   hosts: jenkins
   become: true
   tasks:
@@ -9,29 +9,51 @@
         state: stopped
       ignore_errors: true
 
-    - name: Remove Jenkins home directory contents (jobs, plugins, workspaces, configs)
-      ansible.builtin.file:
-        path: /var/lib/jenkins
+    - name: Purge Jenkins and OpenJDK packages
+      ansible.builtin.apt:
+        name:
+          - jenkins
+          - "openjdk-*"
         state: absent
+        purge: true
+        autoremove: true
 
-    - name: Recreate clean Jenkins home directory
+    - name: Remove Jenkins repository file and GPG keys
       ansible.builtin.file:
-        path: /var/lib/jenkins
-        state: directory
-        owner: jenkins
-        group: jenkins
-        mode: '0755'
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/jenkins.list
+        - /etc/apt/trusted.gpg.d/jenkins.gpg
 
-    - name: Prune all Docker containers, images, and volumes left from old builds
+    - name: Delete Jenkins data, configuration, cache, and log directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/jenkins
+        - /var/cache/jenkins
+        - /var/log/jenkins
+        - /etc/default/jenkins
+        - /etc/jenkins
+
+    - name: Delete 'jenkins' system user and group
+      ansible.builtin.user:
+        name: jenkins
+        state: absent
+        remove: true
+        force: true
+      ignore_errors: true
+
+    - name: Purge unused/stopped Docker containers, unused images, networks, and build caches
       ansible.builtin.command: docker system prune -a --volumes -f
       ignore_errors: true
 
-    - name: Remove legacy SSH keys for verjenkins on Jenkins host if any
-      ansible.builtin.file:
-        path: "/var/lib/jenkins/.ssh"
-        state: absent
-
-    - name: Restart Jenkins service with fresh configuration
-      ansible.builtin.systemd:
-        name: jenkins
-        state: restarted
+    - name: Clean APT package cache to reclaim disk space
+      ansible.builtin.apt:
+        autoclean: true
+        autoremove: true
+      
+    - name: Clear system journal logs older than 1 day
+      ansible.builtin.command: journalctl --vacuum-time=1d
+      ignore_errors: true
