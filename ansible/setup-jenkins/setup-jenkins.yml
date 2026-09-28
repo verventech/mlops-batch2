@@ -4,22 +4,24 @@
   become: true
 
   tasks:
-    # 1. PURGE OLD / CONFLICTING DOCKER REPOSITORY CONFIGURATIONS
-    - name: Remove legacy Docker list files and keyrings
+    # 1. PURGE OLD / CONFLICTING DOCKER & JENKINS REPOSITORY CONFIGURATIONS
+    - name: Remove legacy Docker and Jenkins list files/keyrings
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop:
         - /etc/apt/sources.list.d/docker.list
         - /etc/apt/sources.list.d/docker.sources
-        - /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
+        - /etc/apt/sources.list.d/jenkins.list
         - /etc/apt/keyrings/docker.gpg
         - /etc/apt/keyrings/docker.asc
+        - /etc/apt/keyrings/jenkins.gpg
+        - /etc/apt/keyrings/jenkins.asc
 
-    - name: Strip any legacy Docker repository lines from /etc/apt/sources.list
+    - name: Strip any legacy Docker or Jenkins repository lines from /etc/apt/sources.list
       ansible.builtin.lineinfile:
         path: /etc/apt/sources.list
-        regexp: '.*download\.docker\.com.*'
+        regexp: '.*(download\.docker\.com|pkg\.jenkins\.io).*'
         state: absent
 
     # 2. INSTALL BASE PRE-REQUISITES
@@ -70,16 +72,17 @@
         state: started
         enabled: true
 
-    # 4. ADD JENKINS REPOSITORY & INSTALL
-    - name: Download Jenkins GPG key
-      ansible.builtin.get_url:
-        url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
-        dest: /etc/apt/keyrings/jenkins.asc
-        mode: '0644'
+    # 4. ADD JENKINS REPOSITORY (DE-ARMORED KEYRING METHOD)
+    - name: Download and de-armor Jenkins GPG key
+      ansible.builtin.shell: |
+        curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | gpg --dearmor -o /etc/apt/keyrings/jenkins.gpg --yes
+        chmod 644 /etc/apt/keyrings/jenkins.gpg
+      args:
+        creates: /etc/apt/keyrings/jenkins.gpg
 
     - name: Add Jenkins APT repository
       ansible.builtin.apt_repository:
-        repo: "deb [signed-by=/etc/apt/keyrings/jenkins.asc] https://pkg.jenkins.io/debian-stable binary/"
+        repo: "deb [signed-by=/etc/apt/keyrings/jenkins.gpg] https://pkg.jenkins.io/debian-stable binary/"
         filename: jenkins
         state: present
         update_cache: true
