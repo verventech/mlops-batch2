@@ -4,8 +4,8 @@
   become: true
 
   tasks:
-    # 1. PURGE ALL OLD / CONFLICTING REPOSITORY CONFIGURATIONS & LEGACY KEYCHAINS
-    - name: Remove legacy Docker and Jenkins source lists, keyrings, and trusted keys
+    # 1. PURGE ALL OLD / CONFLICTING REPOSITORY CONFIGURATIONS & KEYRINGS
+    - name: Remove legacy Docker and Jenkins source lists and keyrings
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
@@ -18,7 +18,7 @@
         - /etc/apt/keyrings/docker.asc
         - /etc/apt/keyrings/jenkins.gpg
         - /etc/apt/keyrings/jenkins.asc
-        - /etc/apt/keyrings/jenkins-keyring.asc
+        - /etc/apt/keyrings/jenkins-keyring.gpg
         - /etc/apt/trusted.gpg.d/jenkins.gpg
         - /etc/apt/trusted.gpg.d/jenkins.asc
 
@@ -28,8 +28,8 @@
         regexp: '.*(download\.docker\.com|pkg\.jenkins\.io).*'
         state: absent
 
-    # 2. INSTALL BASE PRE-REQUISITES
-    - name: Ensure keyrings directory exists
+    # 2. BASE PREREQUISITES & KEYRINGS DIRECTORY
+    - name: Ensure keyrings directory exists with proper permissions
       ansible.builtin.file:
         path: /etc/apt/keyrings
         state: directory
@@ -47,7 +47,7 @@
         state: present
         update_cache: true
 
-    # 3. ADD DOCKER REPOSITORY
+    # 3. DOCKER ENGINE SETUP
     - name: Download Docker GPG key
       ansible.builtin.get_url:
         url: https://download.docker.com/linux/ubuntu/gpg
@@ -76,8 +76,8 @@
         state: started
         enabled: true
 
-    # 4. ADD JENKINS REPOSITORY (DE-ARMORED BINARY KEYRING METHOD)
-    - name: Download and convert Jenkins GPG key to binary keyring
+    # 4. JENKINS SETUP (DE-ARMORED KEYRING FIX)
+    - name: Download and de-armor Jenkins GPG key
       ansible.builtin.shell: |
         curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | gpg --dearmor -o /etc/apt/keyrings/jenkins-keyring.gpg
         chmod 644 /etc/apt/keyrings/jenkins-keyring.gpg
@@ -96,7 +96,7 @@
           - jenkins
         state: present
 
-    # 5. USER PERMISSIONS & SSH KEYGEN
+    # 5. PERMISSIONS & PIPELINE SSH KEYGEN
     - name: Add 'jenkins' user to 'docker' group
       ansible.builtin.user:
         name: jenkins
@@ -111,7 +111,7 @@
         group: jenkins
         mode: '0700'
 
-    - name: Generate SSH Keypair for Jenkins
+    - name: Generate SSH Keypair for Jenkins pipeline deployment
       community.crypto.openssh_keypair:
         path: /var/lib/jenkins/.ssh/id_rsa
         type: rsa
@@ -135,7 +135,7 @@
         name: jenkins
         state: restarted
 
-    # 6. OUTPUT INITIAL ADMIN PASSWORD
+    # 6. RETRIEVE & DISPLAY INITIAL ADMIN PASSWORD
     - name: Read Jenkins Initial Admin Password
       ansible.builtin.slurp:
         src: /var/lib/jenkins/secrets/initialAdminPassword
