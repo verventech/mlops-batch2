@@ -1,6 +1,6 @@
 ---
 - name: Deep Prune and Reset Production Environment
-  hosts: prod-vm
+  hosts: production-env
   become: true
 
   tasks:
