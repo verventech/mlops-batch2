@@ -109,3 +109,14 @@
         user: verjenkins
         state: present
         key: "{{ jenkins_public_key }}"
+    - name: Ensure AppArmor parser service is running
+      ansible.builtin.systemd:
+        name: apparmor
+        state: restarted
+        enabled: true
+      ignore_errors: true
+
+    - name: Restart Docker daemon to refresh security profiles
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
