@@ -1,0 +1,111 @@
+---
+- name: Provision Production Environment
+  hosts: prod-vm
+  become: true
+
+  vars_prompt:
+    - name: jenkins_public_key
+      prompt: "Paste the Jenkins SSH Public Key (cat /var/lib/jenkins/.ssh/id_rsa.pub)"
+      private: false
+
+    - name: verjenkins_password
+      prompt: "Enter a password for the 'verjenkins' user"
+      private: true
+      confirm: true
+
+  tasks:
+    # 1. PURGE CONFLICTING / STALE DOCKER REPOSITORY ENTRIES
+    - name: Remove stale Docker APT source files and keyrings
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/docker.list
+        - /etc/apt/sources.list.d/docker.sources
+        - /etc/apt/keyrings/docker.asc
+        - /etc/apt/keyrings/docker.gpg
+
+    - name: Strip any residual Docker repository lines from /etc/apt/sources.list
+      ansible.builtin.lineinfile:
+        path: /etc/apt/sources.list
+        regexp: '.*download\.docker\.com.*'
+        state: absent
+
+    # 2. BASE PREREQUISITES & KEYRINGS DIRECTORY
+    - name: Ensure /etc/apt/keyrings directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Update APT cache and install baseline tools
+      ansible.builtin.apt:
+        name:
+          - curl
+          - gnupg
+          - ca-certificates
+          - lsb-release
+          - git
+          - openssh-server
+        state: present
+        update_cache: true
+
+    # 3. DOCKER ENGINE SETUP
+    - name: Download Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+        force: true
+
+    - name: Add Docker APT repository source list file directly
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/docker.list
+        content: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable\n"
+        mode: '0644'
+
+    - name: Update APT cache and install Docker Engine & Compose Plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+    - name: Ensure Docker service is running and enabled
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    # 4. DEPLOYMENT USER ('verjenkins') CREATION & CONFIGURATION
+    - name: Create 'verjenkins' deployment user with password
+      ansible.builtin.user:
+        name: verjenkins
+        shell: /bin/bash
+        create_home: true
+        password: "{{ verjenkins_password | password_hash('sha512') }}"
+        groups: docker
+        append: true
+
+    - name: Grant verjenkins passwordless sudo permissions
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/verjenkins
+        content: "verjenkins ALL=(ALL) NOPASSWD:ALL"
+        mode: '0440'
+
+    - name: Ensure .ssh directory exists for verjenkins
+      ansible.builtin.file:
+        path: /home/verjenkins/.ssh
+        state: directory
+        owner: verjenkins
+        group: verjenkins
+        mode: '0700'
+
+    - name: Inject Jenkins Public Key into verjenkins authorized_keys
+      ansible.posix.authorized_key:
+        user: verjenkins
+        state: present
+        key: "{{ jenkins_public_key }}"
