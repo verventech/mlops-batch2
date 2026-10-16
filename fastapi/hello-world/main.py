@@ -1,7 +1,9 @@
 from typing import Optional
-from pydantic import BaseModel
+from datetime import date
+from pydantic import BaseModel, EmailStr
 from fastapi import FastAPI, Body
 from fastapi.responses import FileResponse
+
 
 app = FastAPI()
 
@@ -57,6 +59,15 @@ class Blog(BaseModel):
   published: Optional[bool] = True
 
 
+@app.post("/blog")
+def create_blog(new_blog: Blog):
+    return {
+
+        "message": "Blog successfully created!",
+        "blog-id:": new_blog.id,
+        "Title_received": new_blog.title
+    }
+
 # --- POST Route (Without Class / Pydantic Model) ---
 # Body(...) forces FastAPI to expect these fields in the JSON Request Body 
 # instead of URL Query Parameters.
@@ -81,11 +92,30 @@ def create_blog(
 
     '''
 
-@app.post("/blog")
-def create_blog(new_blog: Blog):
-    return {
+#Inheritance - > Child inherits from its parent
 
-        "message": "Blog successfully created!",
-        "blog-id:": new_blog.id,
-        "Title_received": new_blog.title
+# DRY -> Dont Repeat Yourself 
+class UserBase(BaseModel):
+    {
+        id : int,
+        name: str,
+        email: EmailStr,
+  
     }
+
+class createUser(UserBase):
+    {
+        username: str,
+        password: str
+    }
+
+class ContractUser(UserBase):
+    {
+        contract_id: int,
+        contract_start_date: date,
+        contract_end_date: date
+    }
+
+class DisplayUser(UserBase):
+    pass
+    
