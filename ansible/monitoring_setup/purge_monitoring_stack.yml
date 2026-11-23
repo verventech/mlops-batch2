@@ -1,0 +1,120 @@
+---
+# USAGE: ansible-playbook -i 192.168.1.29, purge_monitoring_vm.yml
+# (Replace 192.168.1.29 with your actual Management VM IP)
+
+- name: Purge Management Server (Monitoring Stack + Docker)
+  hosts: all
+  remote_user: veransible
+  become: true
+  vars:
+    base_dir: "/opt/monitoring"
+    monitor_user: "veransible"
+
+  tasks:
+    # =========================================================
+    # PART 1: TEARDOWN MONITORING STACK (Prometheus/Grafana)
+    # =========================================================
+
+    # 1. Stop and remove containers
+    - name: Stop and remove monitoring containers
+      community.docker.docker_container:
+        name: "{{ item }}"
+        state: absent
+        force_kill: true
+      loop:
+        - prometheus
+        - grafana
+        - blackbox_exporter
+      ignore_errors: true # Continues if Docker is already stopped or containers don't exist
+
+    # 2. Remove persistent Docker volumes (WARNING: Deletes historical metrics & dashboards)
+    - name: Remove monitoring Docker volumes
+      community.docker.docker_volume:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - prometheus_data
+        - grafana_data
+      ignore_errors: true
+
+    # 3. Remove container images to free disk space
+    - name: Remove monitoring Docker images
+      community.docker.docker_image:
+        name: "{{ item }}"
+        state: absent
+        force_absent: true
+      loop:
+        - prom/prometheus:latest
+        - grafana/grafana:latest
+        - prom/blackbox-exporter:latest
+      ignore_errors: true
+
+    # 4. Delete configuration directories
+    - name: Remove monitoring base directory and configs
+      file:
+        path: "{{ base_dir }}"
+        state: absent
+
+    # =========================================================
+    # PART 2: PURGE DOCKER ENGINE
+    # =========================================================
+
+    # 1. Stop Docker services before uninstalling
+    - name: Stop Docker and containerd services
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop:
+        - docker.socket
+        - docker
+        - containerd
+      ignore_errors: true
+
+    # 2. Remove user from the docker group (must happen before removing the group/package)
+    - name: Remove user from Docker group
+      shell: "gpasswd -d {{ monitor_user }} docker"
+      register: group_removal
+      failed_when: false
+      changed_when: "'Removing user' in group_removal.stdout"
+
+    # 3. Purge Docker Engine packages and dependencies
+    - name: Purge Docker Engine and Plugins
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+          - python3-docker
+        state: absent
+        purge: true
+        autoremove: true
+
+    # 4. Remove Docker data directories
+    - name: Remove residual Docker data directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/docker
+        - /var/lib/containerd
+        - /etc/docker
+
+    # 5. Remove Docker APT repository and GPG key
+    - name: Remove Docker Repository
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: absent
+        filename: docker
+
+    - name: Remove Docker GPG apt Key
+      file:
+        path: /etc/apt/keyrings/docker.asc
+        state: absent
+
+    # 6. Clean up APT cache
+    - name: Update apt cache
+      apt:
+        update_cache: true
