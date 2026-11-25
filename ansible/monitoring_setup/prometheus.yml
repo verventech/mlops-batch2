@@ -49,6 +49,14 @@ scrape_configs:
       - targets: ['192.168.1.100:9187']
         labels: { env: 'production', host: 'vprod' }
 
+  # Nginx Gateway Metrics
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['192.168.1.99:9113']
+        labels: { env: 'staging', host: 'vstg' }
+      - targets: ['192.168.1.100:9113']
+        labels: { env: 'production', host: 'vprod' }
+
   # 5. Jenkins Metrics (Update IP to your current Jenkins server before uncommenting)
   # - job_name: 'jenkins'
   #   metrics_path: /prometheus
