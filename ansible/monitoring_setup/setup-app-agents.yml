@@ -55,3 +55,13 @@
         env:
           # Syntax: postgresql://User:Password@HostIP:Port/DatabaseName?sslmode=disable
           DATA_SOURCE_NAME: "postgresql://verv-user:vervsuperpassword1@{{ ansible_host }}:5432/postgres?sslmode=disable"
+    # 4. Nginx Exporter (Web Gateway on host port 8081)
+    - name: Start Nginx Exporter
+      community.docker.docker_container:
+        name: nginx-exporter
+        image: nginx/nginx-prometheus-exporter:latest
+        state: started
+        restart_policy: always
+        ports: ["9113:9113"]
+        command:
+          - '--nginx.scrape-uri=http://{{ ansible_host }}:8081/stub_status'
